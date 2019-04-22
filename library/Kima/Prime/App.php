@@ -156,7 +156,7 @@ class App
             $this->set_language($lang_config['default']);
         }
 
-        $this->setup_datadog();
+        $this->setup_datadog($this->get_config());
 
         return $this;
     }
@@ -418,6 +418,8 @@ class App
      */
     public function set_http_error($status_code)
     {
+        $active_span = $this->get_tracer()->getActiveSpan();
+
         if (isset($active_span)) {
             $active_span->setTag(Tag::HTTP_STATUS_CODE, $status_code);
         }
@@ -505,7 +507,7 @@ class App
 
     /**
      * Sets the application folders
-     * @return Application
+     * @return App
      */
     private function set_application_folders()
     {
@@ -518,9 +520,9 @@ class App
         return $this;
     }
 
-    private function setup_datadog()
+    private function setup_datadog($config)
     {
-        $tracing_config = $this->get_config()->get('tracing');
+        $tracing_config = $config->get('tracing');
         $operation = 'web.request';
         $service_name = 'php';
         $tracing_enabled = false;
