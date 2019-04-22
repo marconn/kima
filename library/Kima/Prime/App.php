@@ -272,7 +272,7 @@ class App
 
     /**
      * Sets the app tracer
-     * @param $tracer
+     * @param Tracer $tracer
      * @return App
      */
     public function set_tracer($tracer) {

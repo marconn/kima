@@ -9,6 +9,7 @@ namespace Kima\Database;
 use DDTrace\Tracer;
 use Kima\Error;
 use Kima\Prime\App;
+use Kima\Prime\Config;
 use PDO as PdoDriver;
 use PDOException;
 use PDOStatement;
@@ -347,7 +348,7 @@ final class Pdo implements IDatabase, ITransaction
 
     /**
      * Sets the app tracer
-     * @param $tracer
+     * @param Tracer $tracer
      * @return Pdo
      */
     public function set_tracer($tracer) {
@@ -384,6 +385,10 @@ final class Pdo implements IDatabase, ITransaction
         }
     }
 
+    /**
+     * Setups tracer based on given configuration
+     * @param Config $config
+     */
     private function setup_tracer($config) {
         $tracing_config = $config->get('tracing');
         $operation = 'db.query';
