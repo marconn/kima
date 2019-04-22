@@ -6,6 +6,7 @@
  */
 namespace Kima\Database;
 
+use DDTrace\Tracer;
 use Kima\Error;
 use Kima\Prime\App;
 use PDO as PdoDriver;
@@ -61,6 +62,13 @@ final class Pdo implements IDatabase, ITransaction
     private $connection;
 
     /**
+     * Tracer instance
+     *
+     * @var Tracer
+     */
+    private $dd_tracer;
+
+    /**
      * constructor
      */
     public function __construct()
@@ -74,6 +82,24 @@ final class Pdo implements IDatabase, ITransaction
         $config = App::get_instance()->get_config();
         $this->set_database($config->database['mysql']['name'])
             ->set_host($config->database['mysql']['host']);
+
+        $config =[
+            /**
+             * ServiceName specifies the name of this application.
+             */
+            'service_name' => $config->datadog['dbservice']['name'],
+            /**
+             * Enabled, when false, returns a no-op implementation of the Tracer.
+             */
+            'enabled' => $config->datadog['tracing']['enabled'],
+            /**
+             * GlobalTags holds a set of tags that will be automatically applied to
+             * all spans.
+             */
+            'global_tags' => []
+        ];
+
+        $this->dd_tracer = new Tracer(null, null, $config);
     }
 
     /**

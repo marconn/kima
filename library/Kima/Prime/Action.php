@@ -9,6 +9,8 @@ use Kima\Error;
 use Kima\Http\Redirector;
 use Kima\Http\Request;
 use Bootstrap;
+use DDTrace\Tracer;
+use DDTrace\Tag;
 
 /**
  * Action
@@ -75,8 +77,13 @@ class Action
     {
         $app = App::get_instance();
         $method = $app->get_method();
-
+        
         $controller = $this->get_controller_instance();
+
+        $active_span = $app->get_tracer()->getActiveSpan();
+        if (isset($active_span)) {
+            $active_span->setResource(strtoupper($method) . ' ' . (string) $controller);
+        }
 
         // validate controller is instance of Controller
         if (!$controller instanceof Controller) {
