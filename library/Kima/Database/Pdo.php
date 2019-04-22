@@ -395,8 +395,8 @@ final class Pdo implements IDatabase, ITransaction
         $service_name = 'pdo';
         $tracing_enabled = false;
 
-        if (isset($tracing_config) && isset($tracing_config['tracing']) && isset($tracing_config['tracing']['enabled'])) {
-            $tracing_enabled = (bool) $tracing_config['tracing']['enabled'];
+        if (isset($tracing_config) && isset($tracing_config['enabled'])) {
+            $tracing_enabled = (bool) $tracing_config['enabled'];
         }
 
         if ($tracing_enabled) {

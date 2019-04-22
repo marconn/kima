@@ -527,8 +527,8 @@ class App
         $service_name = 'php';
         $tracing_enabled = false;
 
-        if (isset($tracing_config) && isset($tracing_config['tracing']) && isset($tracing_config['tracing']['enabled'])) {
-            $tracing_enabled = (bool) $tracing_config['tracing']['enabled'];
+        if (isset($tracing_config) && isset($tracing_config['enabled'])) {
+            $tracing_enabled = (bool) $tracing_config['enabled'];
         }
 
         if ($tracing_enabled) {
