@@ -1,8 +1,11 @@
 <?php
 namespace Kima\Prime;
 
+use DDTrace\Tag;
 use Kima\Error;
 use Kima\Http\Request;
+use DDTrace\GlobalTracer;
+use DDTrace\Tracer;
 
 /**
  * Kima Prime App
@@ -94,6 +97,13 @@ class App
     private $url_base_pos = 0;
 
     /**
+     * Tracer instance
+     *
+     * @var Tracer
+     */
+    private $tracer;
+
+    /**
      * Construct
      */
     private function __construct()
@@ -146,6 +156,8 @@ class App
             $this->set_language($lang_config['default']);
         }
 
+        $this->setup_datadog($this->get_config());
+
         return $this;
     }
 
@@ -159,7 +171,11 @@ class App
     {
         $this->setup($custom_config);
 
-        return (new Action($urls))->run();
+        $action = (new Action($urls))->run();
+
+        $this->get_tracer()->getActiveSpan()->finish();
+
+        return $action;
     }
 
     /**
@@ -242,6 +258,25 @@ class App
     public function set_method($method)
     {
         $this->method = (string) $method;
+
+        return $this;
+    }
+
+    /**
+     * Returns the app tracer
+     * @return Tracer
+     */
+    public function get_tracer() {
+        return $this->tracer;
+    }
+
+    /**
+     * Sets the app tracer
+     * @param Tracer $tracer
+     * @return App
+     */
+    public function set_tracer($tracer) {
+        $this->tracer = $tracer;
 
         return $this;
     }
@@ -383,6 +418,11 @@ class App
      */
     public function set_http_error($status_code)
     {
+        $active_span = $this->get_tracer()->getActiveSpan();
+
+        if (isset($active_span)) {
+            $active_span->setTag(Tag::HTTP_STATUS_CODE, $status_code);
+        }
         // set the status code
         http_response_code($status_code);
 
@@ -467,7 +507,7 @@ class App
 
     /**
      * Sets the application folders
-     * @return Application
+     * @return App
      */
     private function set_application_folders()
     {
@@ -478,5 +518,48 @@ class App
         $this->l10n_folder = ROOT_FOLDER . '/resource/l10n/';
 
         return $this;
+    }
+
+    private function setup_datadog($config)
+    {
+        $tracing_config = $config->get('tracing');
+        $operation = 'web.request';
+        $service_name = 'php';
+        $tracing_enabled = false;
+
+        if (isset($tracing_config) && isset($tracing_config['enabled'])) {
+            $tracing_enabled = (bool) $tracing_config['enabled'];
+        }
+
+        if ($tracing_enabled) {
+            // get operation name
+            if (isset($tracing_config) && isset($tracing_config['weboperation']) && isset($tracing_config['weboperation']['name'])) {
+                $operation = $tracing_config['weboperation']['name'];
+            }
+
+            if (isset($tracing_config) && isset($tracing_config['webservice']) && isset($tracing_config['webservice']['name'])) {
+                $service_name = $tracing_config['webservice']['name'];
+            }
+        }
+
+        $config = [
+            /**
+             * ServiceName specifies the name of this application.
+             */
+            'service_name' => $service_name,
+            /**
+             * Enabled, when false, returns a no-op implementation of the Tracer.
+             */
+            'enabled' => $tracing_enabled,
+            /**
+             * GlobalTags holds a set of tags that will be automatically applied to
+             * all spans.
+             */
+            'global_tags' => []
+        ];
+
+        $this->set_tracer(new Tracer(null, null, $config));
+
+        $this->get_tracer()->startRootSpan($operation);
     }
 }

@@ -6,8 +6,10 @@
  */
 namespace Kima\Database;
 
+use DDTrace\Tracer;
 use Kima\Error;
 use Kima\Prime\App;
+use Kima\Prime\Config;
 use PDO as PdoDriver;
 use PDOException;
 use PDOStatement;
@@ -61,6 +63,13 @@ final class Pdo implements IDatabase, ITransaction
     private $connection;
 
     /**
+     * Tracer instance
+     *
+     * @var Tracer
+     */
+    private $tracer;
+
+    /**
      * constructor
      */
     public function __construct()
@@ -74,6 +83,8 @@ final class Pdo implements IDatabase, ITransaction
         $config = App::get_instance()->get_config();
         $this->set_database($config->database['mysql']['name'])
             ->set_host($config->database['mysql']['host']);
+
+        $this->setup_tracer($config);
     }
 
     /**
@@ -147,6 +158,11 @@ final class Pdo implements IDatabase, ITransaction
         }
 
         $result['count'] = $count;
+
+        $active_span = $this->tracer->getActiveSpan();
+        if (isset($active_span)) {
+            $active_span->finish();
+        }
 
         return $result;
     }
@@ -224,6 +240,11 @@ final class Pdo implements IDatabase, ITransaction
         // validate query
         if (empty($options['query_string'])) {
             Error::set(self::ERROR_PDO_EMPTY_QUERY);
+        }
+
+        $active_span = $this->tracer->getActiveSpan();
+        if (isset($active_span)) {
+            $active_span->setResource($options['query_string']);
         }
 
         try {
@@ -318,6 +339,25 @@ final class Pdo implements IDatabase, ITransaction
     }
 
     /**
+     * Returns the app tracer
+     * @return Tracer
+     */
+    public function get_tracer() {
+        return $this->tracer;
+    }
+
+    /**
+     * Sets the app tracer
+     * @param Tracer $tracer
+     * @return Pdo
+     */
+    public function set_tracer($tracer) {
+        $this->tracer = $tracer;
+
+        return self::$instance;
+    }
+
+    /**
      * inheritDoc
      */
     private function bind_values(PDOStatement &$statement, array $binds): void
@@ -343,5 +383,59 @@ final class Pdo implements IDatabase, ITransaction
 
             $statement->bindValue($key, $bind, $type);
         }
+    }
+
+    /**
+     * Setups tracer based on given configuration
+     * @param Config $config
+     */
+    private function setup_tracer($config) {
+        $tracing_config = $config->get('tracing');
+        $operation = 'db.query';
+        $service_name = 'pdo';
+        $tracing_enabled = false;
+
+        if (isset($tracing_config) && isset($tracing_config['enabled'])) {
+            $tracing_enabled = (bool) $tracing_config['enabled'];
+        }
+
+        if ($tracing_enabled) {
+            // get operation name
+            if (isset($tracing_config) && isset($tracing_config['dboperation']) && isset($tracing_config['dboperation']['name'])) {
+                $operation = $tracing_config['dboperation']['name'];
+            }
+
+            if (isset($tracing_config) && isset($tracing_config['webservice']) && isset($tracing_config['dbservice']['name'])) {
+                $service_name = $tracing_config['dbservice']['name'];
+            }
+        }
+
+        $config = [
+            /**
+             * ServiceName specifies the name of this application.
+             */
+            'service_name' => $service_name,
+            /**
+             * Enabled, when false, returns a no-op implementation of the Tracer.
+             */
+            'enabled' => $tracing_enabled,
+            /**
+             * GlobalTags holds a set of tags that will be automatically applied to
+             * all spans.
+             */
+            'global_tags' => []
+        ];
+
+        $this->set_tracer(new Tracer(null, null, $config));
+
+        // Get parent context if any, in order to correlate traces
+        $active_span = App::get_instance()->get_tracer()->getActiveSpan();
+
+        $span_config = [];
+        if (isset($active_span)) {
+            $span_config['child_of'] = $active_span;
+        }
+
+        $this->get_tracer()->startActiveSpan($operation, $span_config);
     }
 }
