@@ -533,8 +533,8 @@ class App
 
         if ($tracing_enabled) {
             // get operation name
-            if (isset($tracing_config) && isset($tracing_config['operation']) && isset($tracing_config['operation']['name'])) {
-                $operation = $tracing_config['operation']['name'];
+            if (isset($tracing_config) && isset($tracing_config['weboperation']) && isset($tracing_config['weboperation']['name'])) {
+                $operation = $tracing_config['weboperation']['name'];
             }
 
             if (isset($tracing_config) && isset($tracing_config['webservice']) && isset($tracing_config['webservice']['name'])) {
