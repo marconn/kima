@@ -15,7 +15,6 @@ use Kima\Prime\Config;
 use PDO as PdoDriver;
 use PDOException;
 use PDOStatement;
-use function GuzzleHttp\json_encode;
 
 /**
  * Handles database using PDO driver
@@ -71,6 +70,13 @@ final class Pdo implements IDatabase, ITransaction
      * @var Tracer
      */
     private $tracer;
+
+    /**
+     * Tracer operation
+     *
+     * @var string
+     */
+    private $tracer_operation;
 
     /**
      * constructor
@@ -146,7 +152,7 @@ final class Pdo implements IDatabase, ITransaction
         if (empty($options['model'])) {
             Error::set(self::ERROR_PDO_EMPTY_MODEL);
         }
-
+        $this->active_tracer();
         $statement = $this->execute($options);
         $objects = [];
         while ($row = $statement->fetchObject($options['model'])) {
@@ -166,11 +172,7 @@ final class Pdo implements IDatabase, ITransaction
 
         $result['count'] = $count;
 
-        $active_span = $this->tracer->getActiveSpan();
-        if (isset($active_span)) {
-            $active_span->finish();
-            $this->tracer->flush();
-        }
+        $this->finish_tracer();
 
         return $result;
     }
@@ -180,12 +182,15 @@ final class Pdo implements IDatabase, ITransaction
      */
     public function call(array $options): array
     {
+        $this->active_tracer();
         $statement = $this->execute($options);
         $objects = [];
         while ($row = $statement->fetchObject()) {
             $objects[] = $row;
         }
         $result['objects'] = $objects;
+
+        $this->finish_tracer();
 
         return $result;
     }
@@ -215,7 +220,9 @@ final class Pdo implements IDatabase, ITransaction
      */
     public function put(array $options)
     {
+        $this->active_tracer();
         $this->execute($options);
+        $this->finish_tracer();
 
         return true;
     }
@@ -225,7 +232,9 @@ final class Pdo implements IDatabase, ITransaction
      */
     public function copy(array $options): bool
     {
+        $this->active_tracer();
         $this->execute($options);
+        $this->finish_tracer();
 
         return true;
     }
@@ -235,7 +244,9 @@ final class Pdo implements IDatabase, ITransaction
      */
     public function delete(array $options)
     {
+        $this->active_tracer();
         $this->execute($options);
+        $this->finish_tracer();
 
         return true;
     }
@@ -247,6 +258,7 @@ final class Pdo implements IDatabase, ITransaction
     {
         // validate query
         if (empty($options['query_string'])) {
+            $this->finish_tracer();
             Error::set(self::ERROR_PDO_EMPTY_QUERY);
         }
 
@@ -259,6 +271,7 @@ final class Pdo implements IDatabase, ITransaction
         try {
             if (!empty($options['debug'])) {
                 var_dump($options);
+                $this->finish_tracer();
                 exit;
             }
 
@@ -272,11 +285,13 @@ final class Pdo implements IDatabase, ITransaction
 
             if (!$success) {
                 $error = $statement->errorInfo();
+                $this->finish_tracer();
                 Error::set(sprintf(self::ERROR_PDO_QUERY_ERROR, $error[2]));
             }
 
             return $statement;
         } catch (PDOException $e) {
+            $this->finish_tracer();
             Error::set(sprintf(self::ERROR_PDO_EXECUTE_ERROR, $e->getMessage()));
         }
     }
@@ -349,6 +364,7 @@ final class Pdo implements IDatabase, ITransaction
 
     /**
      * Returns the app tracer
+     *
      * @return Tracer
      */
     public function get_tracer()
@@ -358,7 +374,9 @@ final class Pdo implements IDatabase, ITransaction
 
     /**
      * Sets the app tracer
+     *
      * @param Tracer $tracer
+     *
      * @return Pdo
      */
     public function set_tracer($tracer)
@@ -387,6 +405,7 @@ final class Pdo implements IDatabase, ITransaction
                 case is_object($bind):
                 case is_array($bind):
                     Error::set(sprintf(self::ERROR_INVALID_BIND_VALUE, print_r($bind, true)));
+                    // no break
                 default:
                     $type = PdoDriver::PARAM_STR;
                     break;
@@ -398,12 +417,13 @@ final class Pdo implements IDatabase, ITransaction
 
     /**
      * Setups tracer based on given configuration
+     *
      * @param Config $config
      */
     private function setup_tracer($config)
     {
         $tracing_config = $config->get('tracing');
-        $operation = 'db.query';
+        $this->tracer_operation = 'db.query';
         $service_name = 'pdo';
         $tracing_enabled = false;
 
@@ -414,7 +434,7 @@ final class Pdo implements IDatabase, ITransaction
         if ($tracing_enabled) {
             // get operation name
             if (isset($tracing_config) && isset($tracing_config['dboperation']) && isset($tracing_config['dboperation']['name'])) {
-                $operation = $tracing_config['dboperation']['name'];
+                $this->tracer_operation = $tracing_config['dboperation']['name'];
             }
 
             if (isset($tracing_config) && isset($tracing_config['webservice']) && isset($tracing_config['dbservice']['name'])) {
@@ -441,15 +461,31 @@ final class Pdo implements IDatabase, ITransaction
         ];
 
         $this->set_tracer(new Tracer(null, null, $config));
+    }
 
+    /**
+     * Actives the tracer
+     */
+    private function active_tracer(): void
+    {
         // Get parent context if any, in order to correlate traces
         $active_span = App::get_instance()->get_tracer()->getActiveSpan();
-
         $span_config = [];
         if (isset($active_span)) {
             $span_config['child_of'] = $active_span;
         }
+        $this->get_tracer()->startActiveSpan($this->tracer_operation, $span_config);
+    }
 
-        $this->get_tracer()->startActiveSpan($operation, $span_config);
+    /**
+     * Finishes the tracer
+     */
+    private function finish_tracer(): void
+    {
+        $active_span = $this->tracer->getActiveSpan();
+        if (isset($active_span)) {
+            $active_span->finish();
+            $this->tracer->flush();
+        }
     }
 }
