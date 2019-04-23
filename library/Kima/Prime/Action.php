@@ -4,14 +4,12 @@
  * @author Steve Vega
  */
 namespace Kima\Prime;
-
 use Kima\Error;
 use Kima\Http\Redirector;
 use Kima\Http\Request;
 use Bootstrap;
 use DDTrace\Tracer;
 use DDTrace\Tag;
-
 /**
  * Action
  * Implementation of the Front Controller design pattern
@@ -25,31 +23,26 @@ class Action
     const ERROR_NO_CONTROLLER_FILE = 'Class file for "%s" is not accesible on "%s"';
     const ERROR_NO_CONTROLLER_INSTANCE = 'Object for "%s" is not an instance of \Kima\Prime\Controller';
     const ERROR_NO_MODULE_ROUTES = 'Routes for module "%s" are not set';
-
     /**
      * Bootstrap path
      */
     const BOOTSTRAP_PATH = 'Bootstrap.php';
-
     /**
      * URLs definition
      */
     const CONTROLLER = 0;
     const LANGUAGE_HANDLER = 1;
     const LANGUAGE_HANDLER_PARAMS = 2;
-
     /**
      * Controller class name
      * @var string
      */
     private $controller;
-
     /**
      * Url parameters
      * @var array
      */
     private $url_parameters = [];
-
     /**
      * Construct
      * @param array $urls
@@ -59,17 +52,13 @@ class Action
         // load the bootstrap
         $this->load_bootstrap();
         $app = App::get_instance();
-
         $this->set_url_parameters($app->get_url_base_pos())
             ->set_controller($urls);
-
         if (empty($this->controller)) {
             $app->set_http_error(404);
         }
-
         $this->check_https();
     }
-
     /**
      * Creates a controller instances and runs the request method
      */
@@ -77,27 +66,21 @@ class Action
     {
         $app = App::get_instance();
         $method = $app->get_method();
-        
         $controller = $this->get_controller_instance();
-
         $active_span = $app->get_tracer()->getActiveSpan();
         if (isset($active_span)) {
-            $active_span->setResource(strtoupper($method) . ' ' . (string) $controller);
+            $active_span->setResource(strtoupper($method) . ' ' . get_class($controller));
         }
-
         // validate controller is instance of Controller
         if (!$controller instanceof Controller) {
             Error::set(sprintf(self::ERROR_NO_CONTROLLER_INSTANCE, $this->controller));
         }
-
         // validate the required http method is implemented in controller
         if (!in_array($method, get_class_methods($controller))) {
             return $app->set_http_error(405);
         }
-
         return $controller->$method($this->url_parameters);
     }
-
     /**
      * Gets the action definition
      * - Includes the required controller to process the action
@@ -115,7 +98,6 @@ class Action
                 ? $urls = $urls[$module]
                 : Error::set(sprintf(self::ERROR_NO_MODULE_ROUTES, $module));
         }
-
         // loop the defined urls looking for a match
         foreach ($urls as $url => $controller) {
             if (is_string($controller)) {
@@ -130,10 +112,8 @@ class Action
                 }
             }
         }
-
         return $this;
     }
-
     /**
      * Checks for possible http/https redirections
      */
@@ -141,21 +121,17 @@ class Action
     {
         $app = App::get_instance();
         $is_https = $app->is_https();
-
         // check if https is enforced
         if ($app->is_https_enforced()) {
             return $is_https ? true : Redirector::https();
         }
-
         // check if the controller is in the individual list of https request
         $https_controllers = $app->get_https_controllers();
         if (in_array($this->controller, $https_controllers)) {
             return $is_https ? true : Redirector::https();
         }
-
         return false;
     }
-
     /**
      * Sets the url parameters
      * @param int $base_pos What position to start looking for a match
@@ -164,15 +140,12 @@ class Action
     {
         // get the URL path
         $path = parse_url(Request::server('REQUEST_URI'), PHP_URL_PATH);
-        $url_parameters = array_values(array_filter(explode('/', $path), array($this,"validate_filter")));
-
+        $url_parameters = array_values(array_filter(explode('/', $path), array($this, "validate_filter")));
         $this->url_parameters = $base_pos > 0
             ? array_slice($url_parameters, $base_pos)
             : $url_parameters;
-
         return $this;
     }
-
     /**
      * Loads the application bootstrap
      * Calls all public methods on it
@@ -180,17 +153,14 @@ class Action
     private function load_bootstrap()
     {
         $app = App::get_instance();
-
         // set module path if exists
         $module = $app->get_module();
         $module_path = !empty($module)
             ? 'module' . DIRECTORY_SEPARATOR . $module . DIRECTORY_SEPARATOR
             : '';
-
         // set the bootstrap path
         $bootstrap_path = $app->get_application_folder() . DIRECTORY_SEPARATOR
             . $module_path . self::BOOTSTRAP_PATH;
-
         // load the bootstrap if available
         if (is_readable($bootstrap_path)) {
             // get the bootstrap and make sure the class exists
@@ -198,7 +168,6 @@ class Action
             if (!class_exists('Bootstrap', false)) {
                 Error::set(self::ERROR_NO_BOOTSTRAP);
             }
-
             // get the bootstrap methods and call them
             $methods = get_class_methods('Bootstrap');
             $bootstrap = new Bootstrap();
@@ -207,7 +176,6 @@ class Action
             }
         }
     }
-
     /**
      * Validate if the filter is a valid filter
      * @param  obj  $param
@@ -217,7 +185,6 @@ class Action
     {
         return (null !== $param && false !== $param && '' !== $param);
     }
-
     /**
      * Gets the controller instance
      * @return Controller
@@ -225,7 +192,6 @@ class Action
     private function get_controller_instance()
     {
         $default_path = 'Controller\\' . str_replace(DIRECTORY_SEPARATOR, '\\', $this->controller);
-
         $module = App::get_instance()->get_module();
         if (isset($module)) {
             $module_path = 'Module\\' . ucfirst(strtolower($module)) . '\\' . $default_path;
@@ -233,11 +199,9 @@ class Action
                 return new $module_path();
             }
         }
-
         if (!class_exists($default_path)) {
             Error::set(sprintf(self::ERROR_NO_CONTROLLER_FILE, $this->controller, $default_path));
         }
-
         return new $default_path();
     }
 }

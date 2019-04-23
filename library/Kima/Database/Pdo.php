@@ -6,13 +6,16 @@
  */
 namespace Kima\Database;
 
+use DDTrace\Tag;
 use DDTrace\Tracer;
+use DDTrace\Type;
 use Kima\Error;
 use Kima\Prime\App;
 use Kima\Prime\Config;
 use PDO as PdoDriver;
 use PDOException;
 use PDOStatement;
+use function GuzzleHttp\json_encode;
 
 /**
  * Handles database using PDO driver
@@ -124,8 +127,12 @@ final class Pdo implements IDatabase, ITransaction
         // make the database connection
         $dsn = 'mysql:dbname=' . $this->database . ';host=' . $this->host;
         try {
-            $this->connection = new PdoDriver($dsn, $user, $password,
-                [PdoDriver::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'utf8'"]);
+            $this->connection = new PdoDriver(
+                $dsn,
+                $user,
+                $password,
+                [PdoDriver::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'utf8'"]
+            );
         } catch (PDOException $e) {
             Error::set(sprintf(self::ERROR_PDO_CONNECTION_FAILED, $e->getMessage()));
         }
@@ -162,6 +169,7 @@ final class Pdo implements IDatabase, ITransaction
         $active_span = $this->tracer->getActiveSpan();
         if (isset($active_span)) {
             $active_span->finish();
+            $this->tracer->flush();
         }
 
         return $result;
@@ -244,7 +252,8 @@ final class Pdo implements IDatabase, ITransaction
 
         $active_span = $this->tracer->getActiveSpan();
         if (isset($active_span)) {
-            $active_span->setResource($options['query_string']);
+            // Our driver generates query strings with :param as placeholders, which is not supported by datadog
+            $active_span->setResource(preg_replace('/:(\d+|\w+)/', '?', $options['query_string']));
         }
 
         try {
@@ -342,7 +351,8 @@ final class Pdo implements IDatabase, ITransaction
      * Returns the app tracer
      * @return Tracer
      */
-    public function get_tracer() {
+    public function get_tracer()
+    {
         return $this->tracer;
     }
 
@@ -351,7 +361,8 @@ final class Pdo implements IDatabase, ITransaction
      * @param Tracer $tracer
      * @return Pdo
      */
-    public function set_tracer($tracer) {
+    public function set_tracer($tracer)
+    {
         $this->tracer = $tracer;
 
         return self::$instance;
@@ -389,14 +400,15 @@ final class Pdo implements IDatabase, ITransaction
      * Setups tracer based on given configuration
      * @param Config $config
      */
-    private function setup_tracer($config) {
+    private function setup_tracer($config)
+    {
         $tracing_config = $config->get('tracing');
         $operation = 'db.query';
         $service_name = 'pdo';
         $tracing_enabled = false;
 
         if (isset($tracing_config) && isset($tracing_config['enabled'])) {
-            $tracing_enabled = (bool) $tracing_config['enabled'];
+            $tracing_enabled = (bool)$tracing_config['enabled'];
         }
 
         if ($tracing_enabled) {
@@ -423,7 +435,9 @@ final class Pdo implements IDatabase, ITransaction
              * GlobalTags holds a set of tags that will be automatically applied to
              * all spans.
              */
-            'global_tags' => []
+            'global_tags' => [
+                Tag::SPAN_TYPE => Type::SQL
+            ]
         ];
 
         $this->set_tracer(new Tracer(null, null, $config));
