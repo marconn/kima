@@ -1,11 +1,12 @@
 <?php
 namespace Kima\Prime;
 
-use DDTrace\Tag;
 use Kima\Error;
 use Kima\Http\Request;
-use DDTrace\GlobalTracer;
+use DDTrace\Bootstrap;
+use DDTrace\Tag;
 use DDTrace\Tracer;
+use DDTrace\Type;
 
 /**
  * Kima Prime App
@@ -174,6 +175,7 @@ class App
         $action = (new Action($urls))->run();
 
         $this->get_tracer()->getActiveSpan()->finish();
+        $this->get_tracer()->flush();
 
         return $action;
     }
@@ -215,7 +217,7 @@ class App
      */
     public function set_module($module)
     {
-        $this->module = (string) $module;
+        $this->module = (string)$module;
 
         return $this;
     }
@@ -236,7 +238,7 @@ class App
      */
     public function set_controller($controller)
     {
-        $this->controller = (string) $controller;
+        $this->controller = (string)$controller;
 
         return $this;
     }
@@ -257,7 +259,7 @@ class App
      */
     public function set_method($method)
     {
-        $this->method = (string) $method;
+        $this->method = (string)$method;
 
         return $this;
     }
@@ -266,7 +268,8 @@ class App
      * Returns the app tracer
      * @return Tracer
      */
-    public function get_tracer() {
+    public function get_tracer()
+    {
         return $this->tracer;
     }
 
@@ -275,7 +278,8 @@ class App
      * @param Tracer $tracer
      * @return App
      */
-    public function set_tracer($tracer) {
+    public function set_tracer($tracer)
+    {
         $this->tracer = $tracer;
 
         return $this;
@@ -297,7 +301,7 @@ class App
      */
     public function set_url_base_pos($url_base_pos)
     {
-        $this->url_base_pos = (string) $url_base_pos;
+        $this->url_base_pos = (string)$url_base_pos;
 
         return $this;
     }
@@ -318,7 +322,7 @@ class App
      */
     public function set_language($language)
     {
-        $this->language = (string) $language;
+        $this->language = (string)$language;
 
         return $this;
     }
@@ -330,7 +334,7 @@ class App
      */
     public function set_time_zone($time_zone)
     {
-        $this->time_zone = (string) $time_zone;
+        $this->time_zone = (string)$time_zone;
 
         return $this;
     }
@@ -446,7 +450,7 @@ class App
      */
     public function set_predispatcher($predispatcher)
     {
-        $this->predispatcher = (string) $predispatcher;
+        $this->predispatcher = (string)$predispatcher;
 
         return $this;
     }
@@ -520,6 +524,9 @@ class App
         return $this;
     }
 
+    /** Initializes tracing
+     * @param Config $config
+     */
     private function setup_datadog($config)
     {
         $tracing_config = $config->get('tracing');
@@ -528,13 +535,15 @@ class App
         $tracing_enabled = false;
 
         if (isset($tracing_config) && isset($tracing_config['enabled'])) {
-            $tracing_enabled = (bool) $tracing_config['enabled'];
+            $tracing_enabled = (bool)$tracing_config['enabled'];
         }
 
         if ($tracing_enabled) {
             // get operation name
             if (isset($tracing_config) && isset($tracing_config['weboperation']) && isset($tracing_config['weboperation']['name'])) {
                 $operation = $tracing_config['weboperation']['name'];
+                // Required to disable automatic instrumentation. We should figure out a better way later
+                Bootstrap::resetTracer();
             }
 
             if (isset($tracing_config) && isset($tracing_config['webservice']) && isset($tracing_config['webservice']['name'])) {
@@ -555,11 +564,13 @@ class App
              * GlobalTags holds a set of tags that will be automatically applied to
              * all spans.
              */
-            'global_tags' => []
+            'global_tags' => [
+                Tag::SPAN_TYPE => Type::WEB_SERVLET
+            ]
         ];
 
         $this->set_tracer(new Tracer(null, null, $config));
 
-        $this->get_tracer()->startRootSpan($operation);
+        $this->get_tracer()->startActiveSpan($operation);
     }
 }
