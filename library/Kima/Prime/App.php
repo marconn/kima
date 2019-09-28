@@ -1,6 +1,9 @@
 <?php
 namespace Kima\Prime;
 
+use DDTrace\GlobalTracer;
+use DDTrace\NoopTracer;
+use DDTrace\Tag;
 use Kima\Error;
 use Kima\Http\Request;
 use DDTrace\Bootstrap;
@@ -15,9 +18,9 @@ use DDTrace\Type;
  */
 class App
 {
-
     /**
      * instance
+     *
      * @var \Kima\Base\App
      */
     private static $instance;
@@ -33,67 +36,78 @@ class App
 
     /**
      * config
+     *
      * @var array
      */
     private $config;
 
     /**
      * module
+     *
      * @var string
      */
     private $module;
 
     /**
      * controller
+     *
      * @var string
      */
     private $controller;
 
     /**
      * method
+     *
      * @var string
      */
     private $method;
 
     /**
      * Current request language
+     *
      * @var string
      */
     private $language;
 
     /**
      * Default time zone
+     *
      * @var string
      */
     private $time_zone;
 
     /**
      * Whether the connection is secure or not
-     * @var boolean
+     *
+     * @var bool
      */
     private $is_https;
 
     /**
      * Enforces the controller to be https
-     * @var boolean
+     *
+     * @var bool
      */
     private $enforce_https = false;
 
     /**
      * Application predispatcher class
+     *
      * @var string
      */
     private $predispatcher;
 
     /**
      * Individual controllers that should be always https
+     *
      * @var array
      */
     private $https_controllers = [];
 
     /**
      * Sets the base position for the url routes
-     * @var integer
+     *
+     * @var int
      */
     private $url_base_pos = 0;
 
@@ -113,22 +127,13 @@ class App
     }
 
     /**
-     * Get the application instance
-     * @return App
-     */
-    public static function get_instance()
-    {
-        isset(self::$instance) || self::$instance = new self;
-
-        return self::$instance;
-    }
-
-    /**
      * Setup the basic application config
-     * @param  string $custom_config a custom config file
+     *
+     * @param string $custom_config a custom config file
+     *
      * @return App
      */
-    public function setup($custom_config = null)
+    public function setup($custom_config = null): App
     {
         // get the module and HTTP method
         switch (true) {
@@ -148,7 +153,6 @@ class App
         $this->set_method($method);
         $this->set_is_https();
 
-        // set the config
         $this->set_config($custom_config);
 
         // set the default language
@@ -163,25 +167,43 @@ class App
     }
 
     /**
+     * Get the application instance
+     *
+     * @return App
+     */
+    public static function get_instance(): App
+    {
+        isset(self::$instance) || self::$instance = new self();
+
+        return self::$instance;
+    }
+    
+    /**
      * Run the application
-     * @param  array  $urls
-     * @param  string $custom_config a custom config file
+     *
+     * @param array  $urls
+     * @param string $custom_config a custom config file
+     *
      * @return Action
      */
     public function run(array $urls, $custom_config = null)
     {
         $this->setup($custom_config);
 
+        // Sets the datadog tracer config
+        $this->setup_datadog();
+
         $action = (new Action($urls))->run();
-
-        $this->get_tracer()->getActiveSpan()->finish();
-        $this->get_tracer()->flush();
-
+        
+        // Finishes the span execution after action run
+        GlobalTracer::get()->getRootScope()->getSpan()->finish();
+        
         return $action;
     }
 
     /**
      * Return the application config
+     *
      * @return Config
      */
     public function get_config()
@@ -191,10 +213,12 @@ class App
 
     /**
      * Set the config
-     * @param  string $custom_config
+     *
+     * @param string $custom_config
+     *
      * @return App
      */
-    public function set_config($custom_config = null)
+    public function set_config($custom_config = null): App
     {
         $this->config = new Config($custom_config);
 
@@ -203,6 +227,7 @@ class App
 
     /**
      * Returns the application module
+     *
      * @return string
      */
     public function get_module()
@@ -212,10 +237,12 @@ class App
 
     /**
      * Set the application module
-     * @param  string $module
+     *
+     * @param string $module
+     *
      * @return App
      */
-    public function set_module($module)
+    public function set_module($module): App
     {
         $this->module = (string)$module;
 
@@ -224,6 +251,7 @@ class App
 
     /**
      * Return the application controller
+     *
      * @return string
      */
     public function get_controller()
@@ -233,10 +261,12 @@ class App
 
     /**
      * Set the application controller
-     * @param  string $controller
+     *
+     * @param string $controller
+     *
      * @return App
      */
-    public function set_controller($controller)
+    public function set_controller($controller): App
     {
         $this->controller = (string)$controller;
 
@@ -245,6 +275,7 @@ class App
 
     /**
      * Returns the application method
+     *
      * @return string
      */
     public function get_method()
@@ -254,10 +285,12 @@ class App
 
     /**
      * Sets the method
-     * @param  string $method
+     *
+     * @param string $method
+     *
      * @return App
      */
-    public function set_method($method)
+    public function set_method($method): App
     {
         $this->method = (string)$method;
 
@@ -287,6 +320,7 @@ class App
 
     /**
      * Returns the url base position for routing
+     *
      * @return int
      */
     public function get_url_base_pos()
@@ -296,10 +330,12 @@ class App
 
     /**
      * Sets the url routes starting position
-     * @param  int $url_base_pos
+     *
+     * @param int $url_base_pos
+     *
      * @return App
      */
-    public function set_url_base_pos($url_base_pos)
+    public function set_url_base_pos($url_base_pos): App
     {
         $this->url_base_pos = (string)$url_base_pos;
 
@@ -308,6 +344,7 @@ class App
 
     /**
      * Return the application language
+     *
      * @return string
      */
     public function get_language()
@@ -317,10 +354,12 @@ class App
 
     /**
      * Sets the language
-     * @param  string $language
+     *
+     * @param string $language
+     *
      * @return App
      */
-    public function set_language($language)
+    public function set_language($language): App
     {
         $this->language = (string)$language;
 
@@ -329,10 +368,12 @@ class App
 
     /**
      * Sets the default time zone
-     * @param  string $time_zone
+     *
+     * @param string $time_zone
+     *
      * @return App
      */
-    public function set_time_zone($time_zone)
+    public function set_time_zone($time_zone): App
     {
         $this->time_zone = (string)$time_zone;
 
@@ -341,6 +382,7 @@ class App
 
     /**
      * Gets the application default time zone
+     *
      * @return string
      */
     public function get_time_zone()
@@ -352,7 +394,8 @@ class App
 
     /**
      * Returns whether is a secure connection or not
-     * @return boolean
+     *
+     * @return bool
      */
     public function is_https()
     {
@@ -360,26 +403,11 @@ class App
     }
 
     /**
-     * Set whether the connections is https or not
-     * @return App
-     */
-    private function set_is_https()
-    {
-        // get values from sever
-        $https = Request::server('HTTPS');
-        $port = Request::server('SERVER_PORT');
-
-        // check if https is on
-        $this->is_https = (!empty($https) && 'off' !== $https || 443 == $port);
-
-        return $this;
-    }
-
-    /**
      * Makes all request https by default
+     *
      * @return App
      */
-    public function enforce_https()
+    public function enforce_https(): App
     {
         $this->enforce_https = true;
 
@@ -388,7 +416,8 @@ class App
 
     /**
      * Returns whether the request should be https or not
-     * @return boolean
+     *
+     * @return bool
      */
     public function is_https_enforced()
     {
@@ -397,10 +426,12 @@ class App
 
     /**
      * Sets the controllers that should be always https
-     * @param  array $controllers
+     *
+     * @param array $controllers
+     *
      * @return App
      */
-    public function set_https_controllers(array $controllers)
+    public function set_https_controllers(array $controllers): App
     {
         $this->https_controllers = $controllers;
 
@@ -409,6 +440,7 @@ class App
 
     /**
      * Gets the controllers that should be always https
+     *
      * @return array
      */
     public function get_https_controllers()
@@ -418,6 +450,7 @@ class App
 
     /**
      * Set an http error for the page
+     *
      * @param int $status_code
      */
     public function set_http_error($status_code)
@@ -445,10 +478,12 @@ class App
 
     /**
      * Sets the predispatcher class
-     * @param  string $predispatcher
+     *
+     * @param string $predispatcher
+     *
      * @return App
      */
-    public function set_predispatcher($predispatcher)
+    public function set_predispatcher($predispatcher): App
     {
         $this->predispatcher = (string)$predispatcher;
 
@@ -457,6 +492,7 @@ class App
 
     /**
      * Gets the predispatcher class
+     *
      * @return string
      */
     public function get_predispatcher()
@@ -466,6 +502,7 @@ class App
 
     /**
      * Gets the application_folder
+     *
      * @return string
      */
     public function get_application_folder()
@@ -475,6 +512,7 @@ class App
 
     /**
      * Gets the controller_folder
+     *
      * @return string
      */
     public function get_controller_folder()
@@ -484,6 +522,7 @@ class App
 
     /**
      * Gets the module_folder
+     *
      * @return string
      */
     public function get_module_folder()
@@ -493,6 +532,7 @@ class App
 
     /**
      * Gets the view_folder
+     *
      * @return string
      */
     public function get_view_folder()
@@ -502,6 +542,7 @@ class App
 
     /**
      * Gets the l10n_folder
+     *
      * @return string
      */
     public function get_l10n_folder()
@@ -510,10 +551,28 @@ class App
     }
 
     /**
-     * Sets the application folders
+     * Set whether the connections is https or not
+     *
      * @return App
      */
-    private function set_application_folders()
+    private function set_is_https(): App
+    {
+        // get values from sever
+        $https = Request::server('HTTPS');
+        $port = Request::server('SERVER_PORT');
+
+        // check if https is on
+        $this->is_https = (!empty($https) && 'off' !== $https || 443 == $port);
+
+        return $this;
+    }
+
+    /**
+     * Sets the application folders
+     *
+     * @return App
+     */
+    private function set_application_folders(): App
     {
         $this->application_folder = ROOT_FOLDER . '/application/';
         $this->controller_folder = $this->application_folder . 'controller/';
@@ -524,53 +583,40 @@ class App
         return $this;
     }
 
-    /** Initializes tracing
-     * @param Config $config
+    /**
+     * Setups the datadog config
+     *
+     * @return App
      */
-    private function setup_datadog($config)
+    private function setup_datadog(): App
     {
-        $tracing_config = $config->get('tracing');
-        $operation = 'web.request';
-        $service_name = 'php';
-        $tracing_enabled = false;
+        $tracing_config = $this->config->get('tracing');
 
-        if (isset($tracing_config) && isset($tracing_config['enabled'])) {
-            $tracing_enabled = (bool)$tracing_config['enabled'];
+        // If the config isn't setted or isn't enabled then sets the tracer as a NoopTracer
+        if (!isset($tracing_config) || empty($tracing_config['enabled'])) {
+            GlobalTracer::set(NoopTracer::create());
+
+            return $this;
+        };
+
+        // Gets the span in order to be used whenever it's necessary
+        $span = GlobalTracer::get()->getRootScope()->getSpan();
+
+        // Overwrites the operation name only if it exists
+        if (!empty($tracing_config['weboperation']['name'])) {
+            $span->overwriteOperationName($tracing_config['weboperation']['name']);
         }
 
-        if ($tracing_enabled) {
-            // get operation name
-            if (isset($tracing_config) && isset($tracing_config['weboperation']) && isset($tracing_config['weboperation']['name'])) {
-                $operation = $tracing_config['weboperation']['name'];
-                // Required to disable automatic instrumentation. We should figure out a better way later
-                Bootstrap::resetTracer();
-            }
-
-            if (isset($tracing_config) && isset($tracing_config['webservice']) && isset($tracing_config['webservice']['name'])) {
-                $service_name = $tracing_config['webservice']['name'];
-            }
+        // Overwrites the service name only if it exists
+        if (!empty($tracing_config['webservice']['name'])) {
+            $span->setTag(Tag::SERVICE_NAME, $tracing_config['webservice']['name']);
         }
 
-        $config = [
-            /**
-             * ServiceName specifies the name of this application.
-             */
-            'service_name' => $service_name,
-            /**
-             * Enabled, when false, returns a no-op implementation of the Tracer.
-             */
-            'enabled' => $tracing_enabled,
-            /**
-             * GlobalTags holds a set of tags that will be automatically applied to
-             * all spans.
-             */
-            'global_tags' => [
-                Tag::SPAN_TYPE => Type::WEB_SERVLET
-            ]
-        ];
+        // Sets the environment tag only if it exists
+        if (!empty($tracing_config['env'])) {
+            $span->setTag(Tag::ENV, $tracing_config['env']);
+        }
 
-        $this->set_tracer(new Tracer(null, null, $config));
-
-        $this->get_tracer()->startActiveSpan($operation);
+        return $this;
     }
 }
